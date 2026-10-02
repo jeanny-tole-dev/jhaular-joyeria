@@ -1,0 +1,108 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+@import url('https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&display=swap');
+
+/* Paleta real de Jhaular: "Sustrato Terroso, Oro Líquido & Esmeralda" */
+@theme {
+  /* Colores literales de la paleta */
+  --color-corteza: #231815;   /* Corteza Ancestral — fondo base */
+  --color-arena: #7E6754;     /* Arena Silvestre — neutro cálido */
+  --color-musgo: #122A1E;     /* Musgo Húmedo — verde oscuro de superficie */
+  --color-esmeralda: #084F35; /* Verde Esmeralda — acento de sofisticación */
+  --color-oro: #D4AF37;       /* Oro Puro 24K — CTAs, acentos de alto valor */
+  --color-champan: #E9DFCE;   /* Champán Ahumado — texto principal claro */
+
+  /* Alias semánticos (así el resto de los componentes no cambian de nombre) */
+  --color-background: var(--color-corteza);
+  --color-on-background: var(--color-champan);
+
+  --color-surface: var(--color-corteza);
+  --color-surface-container-lowest: #180f0d;
+  --color-surface-container-low: #2c211d;
+  --color-surface-container: var(--color-musgo);
+  --color-surface-container-high: #1c3a2b;
+  --color-surface-container-highest: #24493a;
+
+  --color-on-surface: var(--color-champan);
+  --color-on-surface-variant: #cbbfae;
+  --color-outline: var(--color-arena);
+  --color-outline-variant: #4a3d34;
+
+  --color-primary: var(--color-arena);
+  --color-primary-container: #352a23;
+  --color-on-primary: var(--color-corteza);
+  --color-on-primary-container: var(--color-arena);
+
+  --color-secondary: var(--color-oro);
+  --color-secondary-container: #8a6f1f;
+  --color-on-secondary: #2e2100;
+  --color-on-secondary-container: #3c2f00;
+
+  --color-tertiary: var(--color-esmeralda);
+  --color-tertiary-container: var(--color-musgo);
+  --color-on-tertiary: var(--color-champan);
+  --color-on-tertiary-container: #7fc4a3;
+
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+
+  /* Tipografía */
+  --font-display: "Libre Caslon Text", serif;
+  --font-body: "Hanken Grotesk", sans-serif;
+  --font-mono: "Geist", monospace;
+
+  --text-display-lg: 64px;
+  --text-display-lg--line-height: 1.1;
+  --text-display-lg--letter-spacing: -0.02em;
+
+  --text-headline-lg: 48px;
+  --text-headline-lg--line-height: 1.2;
+
+  --text-headline-lg-mobile: 32px;
+  --text-headline-lg-mobile--line-height: 1.2;
+
+  --text-headline-md: 32px;
+  --text-headline-md--line-height: 1.3;
+
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 1.6;
+
+  --text-body-md: 16px;
+  --text-body-md--line-height: 1.6;
+
+  --text-label-caps: 12px;
+  --text-label-caps--line-height: 1;
+  --text-label-caps--letter-spacing: 0.1em;
+
+  --text-technical-mono: 13px;
+  --text-technical-mono--line-height: 1.4;
+
+  /* Espaciado de layout */
+  --spacing-section-gap: 160px;
+  --spacing-margin-desktop: 80px;
+  --spacing-margin-mobile: 20px;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-on-background font-body;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-secondary);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .label-caps {
+    @apply font-mono text-label-caps uppercase tracking-widest;
+  }
+
+  /* Tag/badge estilo moodboard: "TEXTURA & METALURGIA"
+     (repetimos las clases en vez de @apply label-caps: en Tailwind v4
+     no se puede aplicar una clase propia dentro de otra con @apply) */
+  .tag-pill {
+    @apply font-mono text-label-caps uppercase tracking-widest bg-secondary text-on-secondary px-3 py-1.5 inline-block;
+  }
+}

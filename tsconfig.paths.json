@@ -1,0 +1,9 @@
+{
+  "//": "Agrega esto dentro de compilerOptions en tu tsconfig.app.json (el que genera Vite):",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}
