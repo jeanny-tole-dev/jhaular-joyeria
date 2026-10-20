@@ -803,9 +803,10 @@ export default function AdminCatalogo() {
             <span>Actualizar</span>
           </button>
 
-          {/* Botón Primario: Redirigir a Producción donde reside la Calculadora BOM */}
+          {/* Botón Primario: Abrir directamente la Calculadora BOM / Nueva Manilla */}
           <Link
             to="/admin/produccion"
+            state={{ openNewBomModal: true }}
             className="flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold font-mono bg-secondary text-on-secondary hover:bg-secondary/90 transition-all shadow-md cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -982,7 +983,7 @@ export default function AdminCatalogo() {
                 {/* 3. ACCIONES Y BOTONES DE GESTIÓN */}
                 <div className="px-4 py-2.5 bg-[#101014] border-t border-[#25221E] flex items-center justify-between text-xs font-mono">
                   <button
-                    onClick={() => navigate('/admin/produccion', { state: { editProdId: item.id } })}
+                    onClick={() => navigate('/admin/produccion', { state: { editProdId: item.id, editNombre: item.nombre } })}
                     className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-amber-400 bg-amber-500/10 hover:text-amber-300 hover:bg-amber-500/20 border border-amber-500/30 transition-all duration-300 cursor-pointer font-bold"
                     title="Editar Ficha Técnica y Calculadora BOM en Producción"
                   >

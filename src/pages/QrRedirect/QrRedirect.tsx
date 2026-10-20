@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { Gem, ArrowRight, ExternalLink } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
@@ -9,8 +8,59 @@ const DEFAULT_WEB_URL = 'https://jhaular.com/catalogo'
 const LOCAL_STORAGE_CONFIG_KEY = 'jhaular_qr_config_v1'
 const LOCAL_STORAGE_SCANS_KEY = 'jhaular_qr_scans_v1'
 
+interface QrConfigGuardada {
+  tipo_destino?: string | null
+  telefono?: string | null
+  mensaje?: string | null
+  url_destino?: string | null
+  id?: string
+  total_escaneos?: number | null
+}
+
+function soloDigitos(valor: string): string {
+  return valor.replace(/[^0-9]/g, '')
+}
+
+function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms)
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      () => {
+        clearTimeout(timer)
+        resolve(null)
+      }
+    )
+  })
+}
+
+function urlHttpSegura(raw: string | null | undefined): string | null {
+  const trimmed = (raw || '').trim()
+  if (!trimmed) return null
+
+  let candidate = trimmed
+  if (!/^https?:\/\//i.test(candidate)) {
+    if (/^[a-z0-9.-]+\.[a-z]{2,}([/?#].*)?$/i.test(candidate)) {
+      candidate = `https://${candidate}`
+    } else {
+      return null
+    }
+  }
+
+  try {
+    const url = new URL(candidate)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
+    if (url.username || url.password) return null
+    return url.toString()
+  } catch {
+    return null
+  }
+}
+
 export default function QrRedirect() {
-  const [searchParams] = useSearchParams()
   const [redirecting, setRedirecting] = useState<boolean>(true)
   const [targetUrl, setTargetUrl] = useState<string>('')
   const [destinationType, setDestinationType] = useState<string>('whatsapp')
@@ -19,30 +69,21 @@ export default function QrRedirect() {
     let isMounted = true
 
     const processRedirect = async () => {
-      let phone = searchParams.get('phone') || searchParams.get('p') || ''
-      let message = searchParams.get('message') || searchParams.get('m') || ''
-      let customUrl = searchParams.get('url') || searchParams.get('u') || ''
-      let targetType = 'whatsapp'
-
+      let config: QrConfigGuardada | null = null
       const nowIso = new Date().toISOString()
 
       try {
-        // 1. Obtener la configuración maestra activa de Supabase
-        const { data, error } = await supabase
-          .from('qr_config')
-          .select('*')
-          .limit(1)
-          .maybeSingle()
+        const respuesta = await withTimeout(
+          supabase.from('qr_config').select('*').limit(1).maybeSingle(),
+          4000
+        )
+        const data = respuesta?.data
+        const error = respuesta?.error
 
         if (!error && data) {
-          if (data.tipo_destino) targetType = data.tipo_destino
-          if (!phone && data.telefono) phone = data.telefono
-          if (!message && data.mensaje) message = data.mensaje
-          if (!customUrl && data.url_destino) customUrl = data.url_destino
+          config = data
 
           const currentTotal = Number(data.total_escaneos || 0) + 1
-
-          // 2. Incrementar +1 a los Escaneos Históricos y registrar última hora de escaneo
           supabase
             .from('qr_config')
             .update({
@@ -52,7 +93,6 @@ export default function QrRedirect() {
             .eq('id', data.id)
             .then(() => {})
 
-          // 3. Registrar evento individual de escaneo para analíticas de hoy y dispositivo
           supabase
             .from('qr_scans')
             .insert([
@@ -68,28 +108,21 @@ export default function QrRedirect() {
         console.warn('Procesando redirección mediante fallback de configuración:', err)
       }
 
-      // Fallback a localStorage si no hay respuesta de Supabase
-      if (!phone || !message || !customUrl) {
+      if (!config) {
         try {
           const storedRaw = localStorage.getItem(LOCAL_STORAGE_CONFIG_KEY)
           if (storedRaw) {
-            const parsed = JSON.parse(storedRaw)
-            if (parsed.tipo_destino) targetType = parsed.tipo_destino
-            if (!phone && parsed.telefono) phone = parsed.telefono
-            if (!message && parsed.mensaje) message = parsed.mensaje
-            if (!customUrl && parsed.url_destino) customUrl = parsed.url_destino
+            config = JSON.parse(storedRaw) as QrConfigGuardada
           }
         } catch {
-          // Ignorar error de parsing
+          config = null
         }
       }
 
-      // Valores por defecto finales de respaldo
-      if (!phone) phone = DEFAULT_PHONE
-      if (!message) message = DEFAULT_MESSAGE
-      if (!customUrl) customUrl = DEFAULT_WEB_URL
+      const targetType = config?.tipo_destino === 'web' ? 'web' : 'whatsapp'
+      const phone = soloDigitos(config?.telefono || '') || DEFAULT_PHONE
+      const message = (config?.mensaje || '').trim() || DEFAULT_MESSAGE
 
-      // Respaldo de contador local
       try {
         const localScans = Number(localStorage.getItem(LOCAL_STORAGE_SCANS_KEY) || '0') + 1
         localStorage.setItem(LOCAL_STORAGE_SCANS_KEY, localScans.toString())
@@ -97,29 +130,15 @@ export default function QrRedirect() {
         // Ignorar
       }
 
-      // Construcción del enlace de destino final según el tipo seleccionado
-      let finalTargetUrl = ''
-
-      if (targetType === 'web' || customUrl.startsWith('http://') || customUrl.startsWith('https://')) {
-        let cleanUrl = customUrl.trim()
-        if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-          cleanUrl = `https://${cleanUrl}`
-        }
-        finalTargetUrl = cleanUrl
-        targetType = 'web'
-      } else {
-        const cleanPhone = phone.replace(/[^0-9]/g, '')
-        const finalPhone = cleanPhone.length > 0 ? cleanPhone : DEFAULT_PHONE
-        finalTargetUrl = `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`
-        targetType = 'whatsapp'
-      }
+      const finalTargetUrl =
+        targetType === 'web'
+          ? urlHttpSegura(config?.url_destino) || DEFAULT_WEB_URL
+          : `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
 
       if (isMounted) {
         setTargetUrl(finalTargetUrl)
         setDestinationType(targetType)
         setRedirecting(false)
-
-        // Redirección instantánea al enlace activo
         window.location.replace(finalTargetUrl)
       }
     }
@@ -129,7 +148,7 @@ export default function QrRedirect() {
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [])
 
   return (
     <div className="min-h-screen bg-[#0D0C10] text-[#E8DCC4] flex flex-col items-center justify-center p-6 select-none relative overflow-hidden">

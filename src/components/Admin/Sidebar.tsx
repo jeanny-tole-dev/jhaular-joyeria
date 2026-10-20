@@ -8,7 +8,9 @@ import {
   Settings,
   Gem,
   ShieldCheck,
-  QrCode
+  QrCode,
+  Scale,
+  Calculator
 } from 'lucide-react'
 
 interface NavItem {
@@ -24,10 +26,12 @@ const navItems: NavItem[] = [
   { to: '/admin/inventario', label: 'Inventario', icon: Boxes },
   { to: '/admin/catalogo', label: 'Catálogo', icon: Gem },
   { to: '/admin/ventas', label: 'Ventas', icon: TrendingUp },
-  { to: '/admin/certificados', label: 'Certificados & Lotes', icon: ShieldCheck },
-  { to: '/admin/qr-whatsapp', label: 'QR Infinito WhatsApp', icon: QrCode, badge: 'NUEVO' },
   { to: '/admin/produccion', label: 'Producción', icon: Hammer },
   { to: '/admin/gastos', label: 'Gastos', icon: Receipt },
+  { to: '/admin/contabilidad', label: 'Contabilidad', icon: Scale },
+  { to: '/admin/proyeccion', label: 'Proyección', icon: Calculator },
+  { to: '/admin/certificados', label: 'Certificados & Lotes', icon: ShieldCheck },
+  { to: '/admin/qr-whatsapp', label: 'QR Infinito WhatsApp', icon: QrCode, badge: 'NUEVO' },
   { to: '/admin/configuracion', label: 'Configuración', icon: Settings },
 ]
 

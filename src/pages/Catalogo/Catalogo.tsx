@@ -20,45 +20,28 @@ import { supabase } from '../../lib/supabase'
 import { convertGoogleDriveUrl } from '../../utils/driveUrlConverter'
 import type { ProductoData } from '../../types/productos'
 
-// Fallback de respaldo para la sección de Más Vendidos si la BD está vacía
-const PRODUCTOS_STORE_FALLBACK: ProductoData[] = [
-  {
-    id: 'manilla_elemento_ancestral',
-    nombre: 'Manilla Elemento Ancestral',
-    categoria: 'Ediciones Especiales',
-    descripcion: 'Macramé Negro, Oro 18K Certificado, Esmeralda en Bruto',
-    precio_venta: 185000,
-    imagen_principal_url: '/elemento_editorial.jpg',
-    bonds_tag: 'MÁS VENDIDO'
-  },
-  {
-    id: 'rosario_imperial_18k',
-    nombre: 'Rosario Imperial Sacro',
-    categoria: 'Religiosa',
-    descripcion: 'Macramé Café, Cruz Sacra en Oro 18K',
-    precio_venta: 280000,
-    imagen_principal_url: '/elemento_macro.jpg',
-    bonds_tag: 'COLECCIÓN SACRA'
-  },
-  {
-    id: 'brazalete_selva_sagrada',
-    nombre: 'Brazalete Selva Sagrada',
-    categoria: 'Aventura',
-    descripcion: 'Hilo Verde Musgo, Esmeralda & Balines de Oro 18K',
-    precio_venta: 210000,
-    imagen_principal_url: '/elemento_uso.jpg',
-    bonds_tag: 'LÍNEA AVENTURA'
-  },
-  {
-    id: 'nudo_infinito_oro',
-    nombre: 'Nudo Infinito Tradicional',
-    categoria: 'Tradicional',
-    descripcion: 'Tejido Cobra Negro, Balines Oro 18K',
-    precio_venta: 165000,
-    imagen_principal_url: '/elemento_empaque.jpg',
-    bonds_tag: 'LÍNEA TRADICIONAL'
+interface PiezaDestacada {
+  nombre: string
+  precio: number
+  descripcion: string
+  imagen: string
+  catalogo: string
+}
+
+function piezaDesdeProducto(
+  item: ProductoData | null,
+  catalogo: string,
+  imagenRespaldo: string
+): PiezaDestacada | null {
+  if (!item) return null
+  return {
+    nombre: item.nombre,
+    precio: Number(item.precio_venta) || 0,
+    descripcion: item.descripcion || '',
+    imagen: convertGoogleDriveUrl(item.imagen_principal_url || item.imagen_url) || imagenRespaldo,
+    catalogo
   }
-]
+}
 
 const CATEGORIAS_PILLS = [
   'Todos',
@@ -69,8 +52,9 @@ const CATEGORIAS_PILLS = [
 ]
 
 export default function Catalogo() {
-  const [productos, setProductos] = useState<ProductoData[]>(PRODUCTOS_STORE_FALLBACK)
+  const [productos, setProductos] = useState<ProductoData[]>([])
   const [loading, setLoading] = useState<boolean>(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [selectedCategoria, setSelectedCategoria] = useState<string>('Todos')
   const [favorites, setFavorites] = useState<Record<string, boolean>>({})
@@ -129,55 +113,60 @@ export default function Catalogo() {
   }
 
   useEffect(() => {
+    let cancelado = false
+
     const fetchPublicProducts = async () => {
       try {
         setLoading(true)
+        setLoadError(null)
 
-        // 1. Consultar base de datos Supabase
-        const { data: prodsData, error } = await supabase
+        const consulta = supabase
           .from('productos')
           .select('*')
+          .eq('activo', true)
+          .eq('es_publico', true)
           .order('created_at', { ascending: false })
 
-        // 2. Leer productos guardados en localStorage local
-        let localProds: ProductoData[] = []
-        try {
-          localProds = JSON.parse(localStorage.getItem('jhaular_saved_productos') || '[]')
-        } catch (e) {
-          console.warn('Error leyendo productos locales:', e)
+        const respuesta = await Promise.race([
+          consulta,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000))
+        ])
+
+        if (cancelado) return
+
+        if (!respuesta) {
+          setProductos([])
+          setLoadError('No se pudo cargar el catálogo.')
+          return
         }
 
-        const mapaUnico = new Map<string, ProductoData>()
+        const { data: prodsData, error } = respuesta
 
-        // 3. Fallbacks locales por defecto
-        PRODUCTOS_STORE_FALLBACK.forEach((p) => {
-          if (p.id) mapaUnico.set(p.id, p)
-        })
-
-        // 4. Productos reales de Supabase
-        if (!error && prodsData && prodsData.length > 0) {
-          prodsData.forEach((p) => {
-            if (p.id) mapaUnico.set(p.id, p)
-          })
+        if (error) {
+          setProductos([])
+          setLoadError('No se pudo cargar el catálogo.')
+          return
         }
 
-        // 5. Aplicar las ediciones locales más recientes realizadas por el admin
-        localProds.forEach((p) => {
-          if (p.id) {
-            const prev = mapaUnico.get(p.id) || {}
-            mapaUnico.set(p.id, { ...prev, ...p })
-          }
-        })
-
-        setProductos(Array.from(mapaUnico.values()))
+        const publicos = (prodsData ?? []).filter(
+          (p) => p.activo === true && p.es_publico === true && Boolean(p.id) && Boolean(p.nombre)
+        )
+        setProductos(publicos)
       } catch (err) {
-        console.warn('Cargando catálogo público con productos local:', err)
+        console.warn('No se pudo cargar el catálogo público:', err)
+        if (!cancelado) {
+          setProductos([])
+          setLoadError('No se pudo cargar el catálogo.')
+        }
       } finally {
-        setLoading(false)
+        if (!cancelado) setLoading(false)
       }
     }
 
     fetchPublicProducts()
+    return () => {
+      cancelado = true
+    }
   }, [])
 
   const toggleFavorite = (productId: string) => {
@@ -234,43 +223,32 @@ export default function Catalogo() {
       })
 
       if (match.length === 0) return null
-      return match.reduce((max, item) => (item.precio_venta > max.precio_venta ? item : max), match[0])
+      return match.reduce((max, item) =>
+        (Number(item.precio_venta) || 0) > (Number(max.precio_venta) || 0) ? item : max
+      , match[0])
     }
 
-    const rel = findMostExpensive(['religiosa', 'sacra', 'rosario'])
-    const ave = findMostExpensive(['aventura', 'selva', 'sagrada', 'brazalete'])
-    const tra = findMostExpensive(['tradicional', 'nudo', 'clasico', 'cobra'])
-    const bes = findMostExpensive(['especial', 'ancestral', 'bespoke', 'edicion'])
-
     return {
-      religiosa: {
-        nombre: rel?.nombre || 'Rosario Imperial Sacro 18K',
-        precio: rel?.precio_venta || 280000,
-        descripcion: rel?.descripcion || 'Símbolos de fe tejidos con devoción imperecedera y cruces sacras en oro de 18K.',
-        imagen: convertGoogleDriveUrl(rel?.imagen_principal_url || rel?.imagen_url) || '/elemento_editorial.jpg',
-        catalogo: 'COLECCIÓN RELIGIOSA / SACRA'
-      },
-      aventura: {
-        nombre: ave?.nombre || 'Brazalete Selva Sagrada Gold',
-        precio: ave?.precio_venta || 210000,
-        descripcion: ave?.descripcion || 'Hilo verde musgo, esmeralda en bruto y balines macizos en oro 18K.',
-        imagen: convertGoogleDriveUrl(ave?.imagen_principal_url || ave?.imagen_url) || '/coleccion-aventura.jpeg',
-        catalogo: 'LÍNEA AVENTURA'
-      },
-      tradicional: {
-        nombre: tra?.nombre || 'Nudo Infinito Tradicional',
-        precio: tra?.precio_venta || 250000,
-        descripcion: tra?.descripcion || 'El arte clásico del macramé colombiano enaltecido con esferas de oro de 18K.',
-        imagen: convertGoogleDriveUrl(tra?.imagen_principal_url || tra?.imagen_url) || '/cortesadorada.jpeg',
-        catalogo: 'LÍNEA TRADICIONAL'
-      },
-      bespoke: {
-        nombre: bes?.nombre || 'Manilla Elemento Ancestral Bespoke',
-        precio: bes?.precio_venta || 320000,
-        descripcion: bes?.descripcion || 'Pieza exclusiva de máxima joyería con dijes magnéticos en oro 18K certificado.',
-        imagen: convertGoogleDriveUrl(bes?.imagen_principal_url || bes?.imagen_url) || '/elemento_macro.jpg',
-        catalogo: 'EDICIONES ESPECIALES & BESPOKE'
-      }
+      religiosa: piezaDesdeProducto(
+        findMostExpensive(['religiosa', 'sacra', 'rosario']),
+        'COLECCIÓN RELIGIOSA / SACRA',
+        '/elemento_editorial.jpg'
+      ),
+      aventura: piezaDesdeProducto(
+        findMostExpensive(['aventura', 'selva', 'sagrada', 'brazalete']),
+        'LÍNEA AVENTURA',
+        '/coleccion-aventura.jpeg'
+      ),
+      tradicional: piezaDesdeProducto(
+        findMostExpensive(['tradicional', 'nudo', 'clasico', 'cobra']),
+        'LÍNEA TRADICIONAL',
+        '/cortesadorada.jpeg'
+      ),
+      bespoke: piezaDesdeProducto(
+        findMostExpensive(['especial', 'ancestral', 'bespoke', 'edicion']),
+        'EDICIONES ESPECIALES & BESPOKE',
+        '/elemento_macro.jpg'
+      )
     }
   }, [productos])
 
@@ -413,8 +391,16 @@ export default function Catalogo() {
           ) : productosFiltrados.length === 0 ? (
             <div className="p-12 text-center bg-white dark:bg-[#141418] rounded-3xl border border-[#EAE5DC] dark:border-[#25221E] space-y-2">
               <Compass className="w-8 h-8 text-[#8C8275] mx-auto" />
-              <p className="font-serif font-bold text-lg text-[#1F1C18] dark:text-white">No se encontraron productos</p>
-              <p className="text-xs text-[#736E65] dark:text-[#A89E90]">Prueba seleccionando otra categoría en las píldoras superiores.</p>
+              <p className="font-serif font-bold text-lg text-[#1F1C18] dark:text-white">
+                {loadError ? 'No se pudo cargar el catálogo' : productos.length === 0 ? 'Aún no hay piezas publicadas' : 'No se encontraron productos'}
+              </p>
+              <p className="text-xs text-[#736E65] dark:text-[#A89E90]">
+                {loadError
+                  ? 'Intenta recargar la página.'
+                  : productos.length === 0
+                    ? 'Cuando una pieza esté activa y pública, aparecerá aquí.'
+                    : 'Prueba seleccionando otra categoría en las píldoras superiores.'}
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -529,6 +515,7 @@ export default function Catalogo() {
         </section>
 
         {/* 4. PIEZAS MAESTRAS DE ALTA GAMA POR COLECCIÓN (MANILLAS MÁS COSTOSAS CON SU CATÁLOGO) */}
+        {(piezasMasCostosas.religiosa || piezasMasCostosas.aventura || piezasMasCostosas.tradicional || piezasMasCostosas.bespoke) && (
         <section className="space-y-6 pt-6 border-t border-[#EAE5DC] dark:border-[#25221E]">
           <div className="text-center max-w-xl mx-auto space-y-1">
             <span className="text-[10px] font-mono uppercase tracking-[0.3em] text-[#B8860B] dark:text-[#D4AF37] font-bold block">
@@ -544,6 +531,7 @@ export default function Catalogo() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Banner 1: RELIGIOSA (Pieza Más Costosa) */}
+            {piezasMasCostosas.religiosa && (
             <div className="relative rounded-3xl overflow-hidden h-96 shadow-xl group border border-[#D4AF37]/30">
               <img
                 src={piezasMasCostosas.religiosa.imagen}
@@ -584,8 +572,10 @@ export default function Catalogo() {
                 </div>
               </div>
             </div>
+            )}
 
             {/* Banner 2: AVENTURA (Pieza Más Costosa) */}
+            {piezasMasCostosas.aventura && (
             <div className="relative rounded-3xl overflow-hidden h-96 shadow-xl group border border-emerald-500/30">
               <img
                 src={piezasMasCostosas.aventura.imagen}
@@ -626,8 +616,10 @@ export default function Catalogo() {
                 </div>
               </div>
             </div>
+            )}
 
             {/* Banner 3: TRADICIONAL (Pieza Más Costosa) */}
+            {piezasMasCostosas.tradicional && (
             <div className="relative rounded-3xl overflow-hidden h-96 shadow-xl group border border-[#D4AF37]/30">
               <img
                 src={piezasMasCostosas.tradicional.imagen}
@@ -668,8 +660,10 @@ export default function Catalogo() {
                 </div>
               </div>
             </div>
+            )}
 
             {/* Banner 4: EDICIONES ESPECIALES & BESPOKE (Pieza Más Costosa) */}
+            {piezasMasCostosas.bespoke && (
             <div className="relative rounded-3xl overflow-hidden h-96 shadow-xl group border border-amber-500/40">
               <img
                 src={piezasMasCostosas.bespoke.imagen}
@@ -708,8 +702,10 @@ export default function Catalogo() {
                 </div>
               </div>
             </div>
+            )}
           </div>
         </section>
+        )}
       </div>
 
       {/* MODAL DE COMPRA DIRECTA POR WHATSAPP & CAPTURA PARA RECOMPRA */}

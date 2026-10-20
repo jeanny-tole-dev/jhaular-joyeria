@@ -17,7 +17,7 @@ import {
 import { supabase } from '../../lib/supabase'
 import ThemeToggle from '../../components/ThemeToggle'
 import Canvas3D from '../../components/laboratorio/Canvas3D'
-import { hayColisionSolida } from '../../components/laboratorio/BraceletEngine'
+import { hayColisionSolida } from '../../utils/geometry3d'
 import type { ElementoColocado, ElementoInventario } from '../../components/laboratorio/BraceletEngine'
 
 // =========================================================================

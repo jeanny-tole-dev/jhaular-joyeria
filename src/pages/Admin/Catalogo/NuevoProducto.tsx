@@ -447,30 +447,10 @@ export default function NuevoProducto() {
         }
       }
 
-      // PASO 4: DESCUENTO AUTOMÁTICO EN INVENTARIO (Tabla 'materiales' de Supabase)
-      for (const [matId, cantConsumida] of Object.entries(recetaConsolidadaMap)) {
-        if (!matId) continue
-        try {
-          const { data: matRow } = await supabase
-            .from('materiales')
-            .select('stock_actual')
-            .eq('id', matId)
-            .maybeSingle()
+      // El stock de materiales no se toca al guardar la ficha.
+      // Baja solo cuando se confirma una venta real.
 
-          if (matRow) {
-            const currentStock = Number(matRow.stock_actual) || 0
-            const nuevoStock = Math.max(0, currentStock - cantConsumida)
-            await supabase
-              .from('materiales')
-              .update({ stock_actual: nuevoStock })
-              .eq('id', matId)
-          }
-        } catch (invErr) {
-          console.warn('No se pudo descontar inventario del material:', matId, invErr)
-        }
-      }
-
-      // PASO 5: Guardar respaldo local para garantizar visibilidad e impacto inmediato en el Catálogo Admin y Público
+      // PASO 4: Guardar respaldo local para garantizar visibilidad e impacto inmediato en el Catálogo Admin y Público
       try {
         const prodGuardado: ProductoData = {
           id: productoId,

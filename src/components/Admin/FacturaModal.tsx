@@ -56,7 +56,7 @@ export default function FacturaModal({
         proveedor: selectedMaterial.proveedor || ''
       }))
     }
-  }, [selectedMaterial])
+  }, [selectedMaterial, formData.proveedor])
 
   // Costo unitario calculado en tiempo real
   const costoUnitarioCalculado = useMemo(() => {

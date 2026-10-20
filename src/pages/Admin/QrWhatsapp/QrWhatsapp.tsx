@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'react-qr-code'
 import {
   QrCode,
@@ -79,7 +79,7 @@ export default function AdminQrWhatsapp() {
   const qrEncodedValue = encodingMode === 'direct' ? activeDestinationUrl : masterBridgeUrl
 
   // Cargar configuración y analítica desde Supabase & LocalStorage
-  const loadData = async (isInitial = false) => {
+  const loadData = useCallback(async (isInitial = false) => {
     try {
       if (isInitial) setLoading(true)
 
@@ -153,7 +153,7 @@ export default function AdminQrWhatsapp() {
     } finally {
       if (isInitial) setLoading(false)
     }
-  }
+  }, [lastScanDate])
 
   useEffect(() => {
     loadData(true)
@@ -164,7 +164,7 @@ export default function AdminQrWhatsapp() {
     }, 6000)
 
     return () => clearInterval(interval)
-  }, [])
+  }, [loadData])
 
   // Guardar cambios de configuración (CRUD Persistente en Supabase)
   const handleSaveConfig = async (e: React.FormEvent) => {

@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ShieldCheck,
+  ShieldX,
   Search,
   Sparkles,
   Lock,
@@ -30,6 +31,8 @@ export default function Certificado() {
   const [isValidating, setIsValidating] = useState<boolean>(false)
   const [copied, setCopied] = useState<boolean>(false)
   const [isRevealed, setIsRevealed] = useState<boolean>(false)
+  const [estadoValidacion, setEstadoValidacion] = useState<'idle' | 'valido' | 'invalido' | 'error'>('idle')
+  const [codigoConsultado, setCodigoConsultado] = useState<string>('')
   const [certificadoActivo, setCertificadoActivo] = useState<{
     codigo: string
     nombre: string
@@ -48,112 +51,67 @@ export default function Certificado() {
 
     setIsValidating(true)
     setCertificadoActivo(null)
+    setEstadoValidacion('idle')
     setCopied(false)
     setIsRevealed(false)
 
     const codigoLimpio = codigoRaw.trim().toUpperCase()
     const codigoFormateado = codigoLimpio.startsWith('JHA-') ? codigoLimpio : `JHA-${codigoLimpio}`
+    setCodigoConsultado(codigoFormateado)
 
     try {
-      // 1. Consultar base de datos Supabase
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('ventas_certificados')
         .select('*')
         .eq('codigo_certificado', codigoFormateado)
         .maybeSingle()
 
-      // 2. Si no se encuentra en Supabase, consultar la persistencia local
-      let certObj = data
-      if (!certObj) {
+      if (error) {
+        setEstadoValidacion('error')
+        return
+      }
+
+      if (!data) {
+        setEstadoValidacion('invalido')
+        return
+      }
+
+      const rawObj = data as typeof data & { lotes_detalle?: unknown }
+      let lotesParsed: unknown = rawObj.lotes_detalle
+      if (typeof lotesParsed === 'string') {
         try {
-          const localSaved = JSON.parse(localStorage.getItem('jhaular_saved_certificados') || '[]')
-          certObj = localSaved.find((c: any) => c.codigo_certificado === codigoFormateado)
-        } catch (e) {
-          console.warn('Error leyendo certs locales:', e)
+          lotesParsed = JSON.parse(lotesParsed)
+        } catch {
+          lotesParsed = []
         }
       }
 
-      setTimeout(() => {
-        if (certObj) {
-          const rawObj = certObj as any
-          let lotesParsed = rawObj.lotes_detalle
-          if (typeof lotesParsed === 'string') {
-            try {
-              lotesParsed = JSON.parse(lotesParsed)
-            } catch {
-              lotesParsed = []
-            }
-          }
-
-          setCertificadoActivo({
-            codigo: certObj.codigo_certificado,
-            nombre: certObj.producto_nombre || 'Manilla Jhaular Alta Joyería',
-            categoria: 'Alta Joyería en Macramé & Oro 18K',
-            fechaManufactura: certObj.fecha_venta || '2026-08-15',
-            clienteNombre: certObj.cliente_nombre || 'Cliente VIP Jhaular',
-            precioVenta: certObj.precio_venta || 0,
-            observacionesGarantia: certObj.observaciones_garantia || 'Garantía extendida. Pieza tejida a mano y certificada.',
-            lotesDetalle: Array.isArray(lotesParsed) ? lotesParsed : [],
-            estado: 'Pieza Auténtica Registrada en Bóveda',
-            hashSeguridad: `0x7F9A...${certObj.id ? certObj.id.toString().substring(0, 6).toUpperCase() : '84B29F'}`
-          })
-        } else {
-          setCertificadoActivo({
-            codigo: codigoFormateado,
-            nombre: 'Pieza Exclusiva Jhaular',
-            categoria: 'Alta Joyería en Macramé & Oro 18K',
-            fechaManufactura: new Date().toISOString().split('T')[0],
-            clienteNombre: 'Cliente VIP Jhaular',
-            precioVenta: 0,
-            observacionesGarantia: 'Certificado de Autenticidad verificado bajo normas de joyería Jhaular.',
-            lotesDetalle: [],
-            estado: 'Pieza Auténtica Registrada',
-            hashSeguridad: `0x7F9A...${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-          })
-        }
-        setIsValidating(false)
-      }, 500)
+      setCertificadoActivo({
+        codigo: data.codigo_certificado,
+        nombre: data.producto_nombre || 'Manilla Jhaular Alta Joyería',
+        categoria: 'Alta Joyería en Macramé & Oro 18K',
+        fechaManufactura: data.fecha_venta || '',
+        clienteNombre: data.cliente_nombre || undefined,
+        precioVenta: data.precio_venta || 0,
+        observacionesGarantia: data.observaciones_garantia || 'Garantía extendida. Pieza tejida a mano y certificada.',
+        lotesDetalle: Array.isArray(lotesParsed) ? lotesParsed : [],
+        estado: 'Pieza Auténtica Registrada en Bóveda',
+        hashSeguridad: `0x7F9A...${data.id ? data.id.toString().substring(0, 6).toUpperCase() : '84B29F'}`
+      })
+      setEstadoValidacion('valido')
     } catch {
-      setTimeout(() => {
-        setCertificadoActivo({
-          codigo: codigoFormateado,
-          nombre: 'Pieza Exclusiva Jhaular',
-          categoria: 'Alta Joyería en Macramé & Oro 18K',
-          fechaManufactura: new Date().toISOString().split('T')[0],
-          clienteNombre: 'Cliente VIP Jhaular',
-          precioVenta: 0,
-          observacionesGarantia: 'Certificado de Autenticidad verificado bajo normas de joyería Jhaular.',
-          lotesDetalle: [],
-          estado: 'Pieza Auténtica Registrada',
-          hashSeguridad: `0x7F9A...${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-        })
-        setIsValidating(false)
-      }, 500)
+      setCertificadoActivo(null)
+      setEstadoValidacion('error')
+    } finally {
+      setIsValidating(false)
     }
   }, [])
 
-  // Lectura automática de código desde la URL o carga del último certificado guardado
   useEffect(() => {
     const codeParam = searchParams.get('codigo')
-    if (codeParam) {
-      setCodigoInput(codeParam)
-      ejecutarValidacion(codeParam)
-    } else {
-      try {
-        const localSaved = JSON.parse(localStorage.getItem('jhaular_saved_certificados') || '[]')
-        if (localSaved.length > 0 && localSaved[0].codigo_certificado) {
-          const ultimoCodigo = localSaved[0].codigo_certificado
-          setCodigoInput(ultimoCodigo)
-          ejecutarValidacion(ultimoCodigo)
-        } else {
-          setCodigoInput('JHA-8472-ORO')
-          ejecutarValidacion('JHA-8472-ORO')
-        }
-      } catch {
-        setCodigoInput('JHA-8472-ORO')
-        ejecutarValidacion('JHA-8472-ORO')
-      }
-    }
+    if (!codeParam) return
+    setCodigoInput(codeParam)
+    ejecutarValidacion(codeParam)
   }, [searchParams, ejecutarValidacion])
 
   const handleValidar = (e: React.FormEvent) => {
@@ -299,26 +257,39 @@ export default function Certificado() {
             </button>
           </form>
 
-          {/* Sugerencias Rápidas */}
-          <div className="flex items-center justify-center space-x-2 text-xs font-mono text-[#736E65] dark:text-[#6E6659]">
-            <span>Código de prueba:</span>
-            <button
-              type="button"
-              onClick={() => {
-                setCodigoInput('JHA-8472-ORO')
-                ejecutarValidacion('JHA-8472-ORO')
-              }}
-              className="text-[#B8860B] dark:text-[#D4AF37] hover:underline cursor-pointer font-bold"
-            >
-              JHA-8472-ORO
-            </button>
-          </div>
         </section>
 
         {/* 3. DOCUMENTO OFICIAL UNIFICADO (LIGHT & DARK FIRST) */}
         <section className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pb-10 print:p-0 print:m-0 print:max-w-none print:w-auto">
           <AnimatePresence mode="wait">
-            {certificadoActivo && (
+            {(estadoValidacion === 'invalido' || estadoValidacion === 'error') && (
+              <motion.div
+                key={estadoValidacion}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.4, ease: 'easeOut' }}
+                className="bg-white dark:bg-zinc-900 rounded-3xl border-2 border-red-700/40 shadow-[0_15px_50px_rgba(0,0,0,0.06)] p-8 sm:p-12 text-center space-y-4"
+              >
+                <div className="mx-auto w-14 h-14 rounded-2xl bg-red-700/10 border border-red-700/30 flex items-center justify-center text-red-700">
+                  <ShieldX className="w-7 h-7" />
+                </div>
+                <h2 className="font-serif text-2xl sm:text-3xl font-bold text-[#1F1C18] dark:text-white">
+                  {estadoValidacion === 'invalido' ? 'Certificado no válido' : 'No se pudo verificar'}
+                </h2>
+                <p className="text-sm text-[#736E65] dark:text-[#A89E90] max-w-lg mx-auto leading-relaxed">
+                  {estadoValidacion === 'invalido'
+                    ? `El código ${codigoConsultado} no está registrado en la bóveda de Jhaular. Esta pieza no tiene un certificado válido.`
+                    : 'No se pudo consultar el registro. El código no se marcó como auténtico. Intenta de nuevo en unos segundos.'}
+                </p>
+                {codigoConsultado && (
+                  <span className="inline-block font-mono text-sm font-bold tracking-wider text-red-800 dark:text-red-300 px-3.5 py-1.5 rounded-lg border border-red-700/30 bg-red-700/5">
+                    {codigoConsultado}
+                  </span>
+                )}
+              </motion.div>
+            )}
+            {estadoValidacion === 'valido' && certificadoActivo && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
